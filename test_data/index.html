@@ -1,0 +1,69 @@
+<html>
+    <head>
+        <script src="/_rpc.js"></script>
+    </head>
+    <body onload="init()">
+        <h1>Hello World</h1>
+        <p><input type="button" id="button" value="Press the button"></p>
+        <script>
+// Top-Level function that can be called by the server.
+// Make sure that these are visible before connecting to the server
+function sayHello(name) {
+    console.log("Hello", name);
+}
+
+// Call when DOM has loaded, connect with the server and enabe the UI
+async function init() {
+    // Install event listeners before connecting to the server.
+    go.addEventListener("greet", (txt) => {console.log("Greet", txt)})
+    // Connect to the server
+    await go.connect()
+    // Wire the UI now, because calls to the server are now possible.
+    document.getElementById("button").addEventListener("click", async function() {
+        console.log("Clicked")
+        try {
+            var result = await go.Foo()
+            console.log("Ok", result)
+        } catch(e) {
+            console.log("Failure", e)
+        }
+
+        try {
+            var result = await go.FooErr(2)
+            console.log("Ok", result)
+        } catch(e) {
+            console.log("Failure", e)
+        }
+
+        try {
+            var result = await go.FooErr(-3)
+            console.log("Ok", result)
+        } catch(e) {
+            console.log("Failure", e)
+        }
+
+        try {
+            var result = await go.FooArr(2, 3)
+            console.log("Ok", result)
+        } catch(e) {
+            console.log("Failure", e)
+        }
+
+        try {
+            var result = await go.FooArrErr(-2, 3)
+            console.log("Ok", result)
+        } catch(e) {
+            console.log("Failure", e)
+        }
+
+        try {
+            var result = await go.Names({"Joe": 42, "Dana": 39})
+            console.log("Ok", result)
+        } catch(e) {
+            console.log("Failure", e)
+        }
+    })
+}
+        </script>
+    </body>
+</html>

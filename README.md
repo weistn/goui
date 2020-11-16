@@ -1,0 +1,1 @@
+This is a library for attaching a HTML/JS UI to a local go application.
