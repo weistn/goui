@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os/exec"
 	"sync"
 	"time"
 
@@ -225,7 +224,8 @@ func (s *HTTPServer) Start() error {
 
 	// Launch the browser
 	u := s.server.URL + "/?token=" + hex.EncodeToString(s.token)
-	cmd := exec.Command("open", u)
+	// cmd := exec.Command("open", u)
+	cmd := LaunchBrowser(u)
 	err := cmd.Start()
 	if err != nil {
 		return err
