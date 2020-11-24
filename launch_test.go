@@ -15,6 +15,7 @@ func (r *MyRemote) DoMe() {
 	r.model.Age = 101
 	r.model.List[0].Name = "Changed"
 	r.model.List[0].ModelDirty()
+	r.model.List = append(r.model.List, &DetailsModel{Name: "I am new"})
 	r.model.ModelDirty()
 }
 

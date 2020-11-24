@@ -24,6 +24,7 @@ type ModelIface interface {
 	ModelState() ModelState
 	ModelTestSync(parent ModelIface, field *Field) ModelState
 	ModelSwapIndex(index int) int
+	ModelID() int
 }
 
 // Model implements synchronization between the GO Model and the JavaScript Model in the browser.
@@ -49,7 +50,10 @@ type Model struct {
 	field  *Field
 	parent ModelIface
 	index  int
+	id     int
 }
+
+var idCounter int
 
 // ModelDirty marks the object as requiring synchronization.
 // The parent Models are marked with ModelChildDirty.
@@ -59,6 +63,8 @@ func (m *Model) ModelDirty() {
 		if m.parent != nil {
 			m.parent.ModelChildDirty()
 		}
+	} else if m.state == ModelChildDirty {
+		m.state = ModelDirty
 	}
 }
 
@@ -99,6 +105,8 @@ func (m *Model) ModelTestSync(parent ModelIface, field *Field) ModelState {
 	} else if m.state == ModelNew {
 		m.parent = parent
 		m.field = field
+		m.id = idCounter
+		idCounter++
 	}
 	return m.state
 }
@@ -110,4 +118,9 @@ func (m *Model) ModelSwapIndex(index int) int {
 	i := m.index
 	m.index = index
 	return i
+}
+
+// ModelID returns a unique id for the model
+func (m *Model) ModelID() int {
+	return m.id
 }

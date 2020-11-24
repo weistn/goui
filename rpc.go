@@ -91,13 +91,15 @@ func GenerateJSCode(obj interface{}) string {
             connection = new WebSocket('ws://' + window.location.host + "/_socket");
             connection.onopen = function () {
                 console.log('Welcome');
-                // initFf();
             };
     
             // Log errors
             connection.onerror = function (error) {
-                console.log('WebSocket Error ' + error);
-                initRej();
+				console.log('WebSocket Error ' + error);
+				if (initRej) {
+					initRej();
+				}
+				document.body.innerHTML = "Application terminated<br>Close browser tab."
             };
     
             // Log messages from the server
@@ -105,11 +107,13 @@ func GenerateJSCode(obj interface{}) string {
                 console.log('Server: ' + e.data);
 				var msg = JSON.parse(e.data);
 				if (msg.m !== undefined) {
-					applyDiff(window.go, "data", undefined, msg.m)
+					applyDiff(window.go, "data", undefined, false, msg.m)
 					if (!gotModel) {
 						// We are ready, once the initial model has been retrieved.
 						gotModel = true
 						initFf();
+						initFf = null
+						initRej = null
 					}
 				} else if (msg.n !== undefined) {
                     var arr = listeners[msg.n]

@@ -2,11 +2,17 @@
     <head>
         <script src="/_rpc.js"></script>
         <script src="/apply.js"></script>
+        <script src="https://unpkg.com/vue@next"></script>
     </head>
     <body onload="init()">
         <h1>Hello World</h1>
         <p><input type="button" id="button" value="Call functions"></p>
         <p><input type="button" id="button2" value="Update model"></p>
+        <div id="app">My age is: {{Age}}
+            <ul>
+                <li v-for="l in List" :key="l._id">Name: {{l.Name}}</li>
+            </ul>
+        </div>
         <script>
 // Top-Level function that can be called by the server.
 // Make sure that these are visible before connecting to the server
@@ -74,7 +80,20 @@ async function init() {
             console.log("Failure", e)
         }
     })
+
+    // Initialize Vue
+    app = Vue.createApp({
+        data() {
+            return go.data
+        }
+    })
+    vm = app.mount("#app")
+    go.data = vm.$data
 }
+
+var app
+var vm
+
         </script>
     </body>
 </html>

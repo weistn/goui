@@ -513,7 +513,7 @@ func (se structEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 	next := byte('{')
 
 	if opts.isModel && opts.modelState == ModelNew {
-		e.WriteString("{\"$m\":1")
+		e.WriteString(fmt.Sprintf("{\"_id\":%v", opts.model.ModelID()))
 		next = ','
 	}
 
@@ -719,7 +719,7 @@ func (ae arrayEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 	n := v.Len()
 
 	if opts.isModel && opts.modelState != ModelNew && (opts.fieldIsSliceOfModelPtrs || opts.fieldIsSliceOfModels) {
-		e.WriteString("{\"$a\":[0")
+		e.WriteString("{\"_a\":[0")
 		oldIndex := 0
 		insertCount := 0
 		skipCount := 0
@@ -755,10 +755,10 @@ func (ae arrayEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 					diff := -(index - oldIndex) + insertCount
 					if diff < 0 {
 						// Some elements are missing
-						e.WriteString(fmt.Sprintf(",{\"$d\":%v}", -diff))
+						e.WriteString(fmt.Sprintf(",{\"_d\":%v}", -diff))
 					} else if diff > 0 {
 						// Some elements have been inserted
-						e.WriteString(fmt.Sprintf(",{\"$i\":%v}", diff))
+						e.WriteString(fmt.Sprintf(",{\"_i\":%v}", diff))
 					}
 					insertCount = 0
 				}
@@ -783,13 +783,13 @@ func (ae arrayEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 		}
 		if insertCount > 0 {
 			// Some elements have been inserted
-			e.WriteString(fmt.Sprintf(",{\"$i\":%v}", insertCount))
+			e.WriteString(fmt.Sprintf(",{\"_i\":%v}", insertCount))
 		}
 		if skipCount > 0 {
 			e.WriteString(fmt.Sprintf(",%v", skipCount))
 			skipCount = 0
 		}
-		e.WriteString(fmt.Sprintf("],\"$l\":%v}", oldIndex))
+		e.WriteString(fmt.Sprintf("],\"_l\":%v}", oldIndex))
 		return
 	}
 
