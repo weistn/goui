@@ -7,6 +7,15 @@ import (
 )
 
 type MyRemote struct {
+	model *MyModel
+}
+
+func (r *MyRemote) DoMe() {
+	println("DoMe has been called")
+	r.model.Age = 101
+	r.model.List[0].Name = "Changed"
+	r.model.List[0].ModelDirty()
+	r.model.ModelDirty()
 }
 
 func (r *MyRemote) Foo() {
@@ -42,12 +51,21 @@ func (r *MyRemote) Names(age map[string]int) (string, int) {
 }
 
 func TestLaunch(t *testing.T) {
-	remote := &MyRemote{}
+	m := &MyModel{}
+	m.Age = 42
+	m.Details = &DetailsModel{Name: "Joe"}
+	m.Embed.Name = "Embedded"
+	m.Embed.More.Name = "Sub-Embedded"
+	m.List = make([]*DetailsModel, 2)
+	m.List[0] = &DetailsModel{Name: "Elem 1"}
+	m.List[1] = &DetailsModel{Name: "Elem 2"}
+	remote := &MyRemote{model: m}
+
 	mux := http.NewServeMux()
 	// Serve content
 	mux.Handle("/", http.FileServer(http.Dir("./test_data")))
 
-	s := NewHTTPServer(mux, remote)
+	s := NewHTTPServer(mux, remote, m)
 	err := s.Start()
 	if err != nil {
 		t.Fatal(err)

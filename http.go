@@ -23,6 +23,7 @@ type HTTPServer struct {
 	connected  chan bool
 	remote     interface{}
 	dispatcher *Dispatcher
+	model      ModelIface
 	lock       sync.Mutex
 	conn       *websocket.Conn
 }
@@ -43,7 +44,7 @@ type callMessage struct {
 // NewHTTPServer creates a new HTTP server.
 // Call Start() to run the server on a system-chosen port via
 // the loopback-device and to launch the UI in the browser.
-func NewHTTPServer(mux *http.ServeMux, remote interface{}) *HTTPServer {
+func NewHTTPServer(mux *http.ServeMux, remote interface{}, model ModelIface) *HTTPServer {
 	// Create a token that is passed in the URL to the browser
 	token := make([]byte, 32)
 	n, err := rand.Reader.Read(token)
@@ -65,6 +66,7 @@ func NewHTTPServer(mux *http.ServeMux, remote interface{}) *HTTPServer {
 		connected:  make(chan bool),
 		remote:     remote,
 		dispatcher: NewDispatcher(remote),
+		model:      model,
 	}
 
 	ws := &websocket.Server{
@@ -134,6 +136,7 @@ func (s *HTTPServer) wshandler(conn *websocket.Conn) {
 	s.conn = conn
 	//    println("Websocket connected")
 	s.connected <- true
+	s.SyncModel()
 	for {
 		var msg string
 		err := websocket.Message.Receive(conn, &msg)
@@ -144,6 +147,8 @@ func (s *HTTPServer) wshandler(conn *websocket.Conn) {
 		}
 		println("Got data:", msg)
 		result, err := s.dispatcher.Dispatch([]byte(msg))
+
+		s.SyncModel()
 
 		s.lock.Lock()
 		if err != nil {
@@ -181,6 +186,32 @@ func (s *HTTPServer) SendEvent(name string, event interface{}) error {
 	s.lock.Unlock()
 	if err != nil {
 		//        println("Websocket failed")
+		s.close()
+		return err
+	}
+	return nil
+}
+
+// SyncModel synchronizes the client-side model with all changes
+// applied to the server-side model.
+func (s *HTTPServer) SyncModel() error {
+	s.lock.Lock()
+	if s.model == nil || s.model.ModelState() == ModelSynced {
+		s.lock.Unlock()
+		return nil
+	}
+	if s.conn == nil {
+		s.lock.Unlock()
+		return errors.New("Not connected")
+	}
+	data, err := MarshalDiff(s.model)
+	if err != nil {
+		return err
+	}
+	println("Sending Model", string(data))
+	err = websocket.Message.Send(s.conn, string(data))
+	s.lock.Unlock()
+	if err != nil {
 		s.close()
 		return err
 	}

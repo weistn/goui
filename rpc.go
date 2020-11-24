@@ -61,6 +61,7 @@ func GenerateJSCode(obj interface{}) string {
 		apis = append(apis, api)
 	}
 	apis = append(apis, `
+		data: null,
         addEventListener : function(name, cb) {
             if (!listeners[name]) {
                 listeners[name] = [ ];
@@ -90,7 +91,7 @@ func GenerateJSCode(obj interface{}) string {
             connection = new WebSocket('ws://' + window.location.host + "/_socket");
             connection.onopen = function () {
                 console.log('Welcome');
-                initFf();
+                // initFf();
             };
     
             // Log errors
@@ -102,8 +103,15 @@ func GenerateJSCode(obj interface{}) string {
             // Log messages from the server
             connection.onmessage = function (e) {
                 console.log('Server: ' + e.data);
-                var msg = JSON.parse(e.data);
-                if (msg.n !== undefined) {
+				var msg = JSON.parse(e.data);
+				if (msg.m !== undefined) {
+					applyDiff(window.go, "data", undefined, msg.m)
+					if (!gotModel) {
+						// We are ready, once the initial model has been retrieved.
+						gotModel = true
+						initFf();
+					}
+				} else if (msg.n !== undefined) {
                     var arr = listeners[msg.n]
                     if (arr) {
                         for (var i = 0; i < arr.length; i++) {
@@ -140,6 +148,7 @@ func GenerateJSCode(obj interface{}) string {
         var counter = 0;
         var listeners = { };
         var connection = null;
+		var gotModel = false;
 
         function send(msg, ff, rej) {
             counter++;

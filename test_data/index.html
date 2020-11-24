@@ -1,10 +1,12 @@
 <html>
     <head>
         <script src="/_rpc.js"></script>
+        <script src="/apply.js"></script>
     </head>
     <body onload="init()">
         <h1>Hello World</h1>
-        <p><input type="button" id="button" value="Press the button"></p>
+        <p><input type="button" id="button" value="Call functions"></p>
+        <p><input type="button" id="button2" value="Update model"></p>
         <script>
 // Top-Level function that can be called by the server.
 // Make sure that these are visible before connecting to the server
@@ -18,6 +20,7 @@ async function init() {
     go.addEventListener("greet", (txt) => {console.log("Greet", txt)})
     // Connect to the server
     await go.connect()
+    console.log(go.data)
     // Wire the UI now, because calls to the server are now possible.
     document.getElementById("button").addEventListener("click", async function() {
         console.log("Clicked")
@@ -58,6 +61,14 @@ async function init() {
 
         try {
             var result = await go.Names({"Joe": 42, "Dana": 39})
+            console.log("Ok", result)
+        } catch(e) {
+            console.log("Failure", e)
+        }
+    })
+    document.getElementById("button2").addEventListener("click", async function() {
+        try {
+            var result = await go.DoMe()
             console.log("Ok", result)
         } catch(e) {
             console.log("Failure", e)
