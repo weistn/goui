@@ -723,63 +723,112 @@ func (ae arrayEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 		oldIndex := 0
 		insertCount := 0
 		skipCount := 0
+		copyPos := 0
+		copyCount := 0
 		for i := 0; i < n; i++ {
+			// Get the model at position i in the slice
 			elem := v.Index(i)
 			var eOpts = opts
 			eOpts.fieldIsSliceOfModelPtrs = false
 			eOpts.isModel = true
-			if opts.fieldIsSliceOfModelPtrs {
+			if isEmptyValue(elem) {
+				eOpts.model = nil
+			} else if opts.fieldIsSliceOfModelPtrs {
 				eOpts.model = elem.Interface().(ModelIface)
 			} else if opts.fieldIsSliceOfModels {
 				// TODO
 			}
-			if isEmptyValue(elem) {
-				// Treat like ModelNew
-				if skipCount > 0 {
-					e.WriteString(fmt.Sprintf("%v,", skipCount))
+
+			// Determine where the element is located in the previous version
+			// of the slice.
+			var delCount = 0
+			var index = 0
+			if eOpts.model != nil {
+				eOpts.modelState = eOpts.model.ModelTestSync(opts.model, opts.field)
+				index = eOpts.model.ModelSwapIndex(i)
+				if index > oldIndex && eOpts.modelState != ModelNew {
+					delCount = index - oldIndex
+				}
+			} else {
+				eOpts.modelState = ModelNew
+			}
+
+			// Insert cumulative directives (such as skip or copy or del)
+			// if required.
+			if skipCount != 0 {
+				// Elements have been skipped
+				if eOpts.modelState != ModelSynced || index != oldIndex {
+					// Stop skipping here, because the next element cannot be skipped
+					e.WriteString(fmt.Sprintf(",%v", skipCount))
 					skipCount = 0
 				}
-				insertCount++
-				e.WriteString(",null")
-				continue
 			}
-			eOpts.modelState = eOpts.model.ModelTestSync(opts.model, opts.field)
-			index := eOpts.model.ModelSwapIndex(i)
-			if eOpts.modelState == ModelNew {
-				insertCount++
-			} else {
-				if index > oldIndex || insertCount > 0 {
-					if skipCount != 0 {
-						panic("Ooops")
-					}
-					diff := -(index - oldIndex) + insertCount
-					if diff < 0 {
-						// Some elements are missing
-						e.WriteString(fmt.Sprintf(",{\"_d\":%v}", -diff))
-					} else if diff > 0 {
-						// Some elements have been inserted
-						e.WriteString(fmt.Sprintf(",{\"_i\":%v}", diff))
-					}
+			if delCount != 0 || insertCount != 0 {
+				diff := -delCount + insertCount
+				// Elements have been inserted or deleted
+				if diff < 0 {
+					// Some elements have been deleted
+					e.WriteString(fmt.Sprintf(",{\"_d\":%v}", -diff))
 					insertCount = 0
+				} else if diff > 0 {
+					// Some elements have been inserted
+					if eOpts.modelState != ModelNew {
+						// Complete insertion here
+						e.WriteString(fmt.Sprintf(",{\"_i\":%v}", diff))
+						insertCount = 0
+					}
 				}
-				oldIndex = index + 1
+				oldIndex += delCount
+			} else if copyCount != 0 {
+				// Elements have been copied here
+				if eOpts.modelState != ModelSynced || index != copyPos+copyCount {
+					// Stop copying here
+					e.WriteString(fmt.Sprintf(",{\"_c\":%v, \"_l\":%v}", copyPos, copyCount))
+					copyCount = 0
+				}
 			}
 
-			if eOpts.modelState == ModelSynced {
-				// Skip it
-				skipCount++
-				continue
+			if eOpts.modelState == ModelNew {
+				// Write out the new value, an insert directive will be
+				// written later.
+				insertCount++
+				e.WriteByte(',')
+				ae.elemEnc(e, elem, eOpts)
+				if eOpts.model != nil {
+					eOpts.model.ModelSynced()
+				}
+			} else if eOpts.modelState == ModelSynced {
+				if oldIndex == index {
+					// Skip one more element of the existing array
+					skipCount++
+					oldIndex++
+				} else if index < oldIndex {
+					// Copy an element from the existing array
+					if copyCount == 0 {
+						// This is the first element to copy.
+						copyPos = index
+					}
+					// The copy directive will be written out later.
+					copyCount++
+				} else {
+					panic("Ooops")
+				}
+			} else {
+				if index < oldIndex {
+					e.WriteString(fmt.Sprintf(",{\"_t\":%v, \"_v\":", index))
+					ae.elemEnc(e, elem, eOpts)
+					e.WriteByte('}')
+				} else {
+					e.WriteByte(',')
+					ae.elemEnc(e, elem, eOpts)
+					oldIndex++
+				}
+				eOpts.model.ModelSynced()
 			}
-
-			if skipCount > 0 {
-				e.WriteString(fmt.Sprintf(",%v", skipCount))
-				skipCount = 0
-			}
-
-			e.WriteByte(',')
-			ae.elemEnc(e, elem, eOpts)
-			// println("Serialized slice element", i, eOpts.modelState)
-			eOpts.model.ModelSynced()
+		}
+		if copyCount > 0 {
+			// Some elements are copied to another location
+			e.WriteString(fmt.Sprintf(",{\"_c\":%v, \"_l\":%v}", copyPos, copyCount))
 		}
 		if insertCount > 0 {
 			// Some elements have been inserted

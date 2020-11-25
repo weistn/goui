@@ -6,6 +6,7 @@ function applyDiff(parent, prop, index, ins, diff) {
         if (diff._a !== undefined) {
             // Modify an array
             var arr = parent[prop]
+            var cloned = null
             // Chop the array when necessary
             if (arr.length != diff._l) {
                 arr.splice(diff._l, arr.length - diff._l)
@@ -17,10 +18,24 @@ function applyDiff(parent, prop, index, ins, diff) {
                 if (typeof(e) === "number") {
                     pos -= e
                 } else if (e._d !== undefined) {
+                    if (cloned === null) {
+                        cloned = [...arr]
+                    }
                     pos -= e._d
                     arr.splice(pos, e._d)
                 } else if (e._i !== undefined) {
                     insertCount = e._i
+                } else if (e._c !== undefined) {
+                    if (cloned === null) {
+                        cloned = [...arr]
+                    }
+                    arr.splice(pos, 0, ...(clone.slice(e._c, e._c + e._l)))
+                } else if (e._t !== undefined) {
+                    if (cloned === null) {
+                        cloned = [...arr]
+                    }
+                    arr.splice(pos, 0, ...(clone.slice(e._c, e._c + e._l)))
+                    applyDiff(arr, undefined, pos, false, e._v)
                 } else {
                     if (insertCount > 0) {
                         applyDiff(arr, undefined, pos, true, e)
