@@ -29,6 +29,11 @@ type ListModel struct {
 	List []*DetailsModel
 }
 
+type List2Model struct {
+	Model
+	List []DetailsModel
+}
+
 func TestDiff(t *testing.T) {
 	m := &MyModel{}
 	m.Age = 42
@@ -146,6 +151,34 @@ func TestListDiff(t *testing.T) {
 	m.List[1] = &DetailsModel{Name: "Elem 1"}
 	m.List[2] = &DetailsModel{Name: "Elem 2"}
 	m.List[3] = &DetailsModel{Name: "Elem 3"}
+
+	data, err := MarshalDiff(m)
+	if err != nil {
+		t.Fail()
+	}
+	println(string(data))
+
+	tmp := m.List[0]
+	m.List[0] = m.List[2]
+	m.List[2] = tmp
+	m.List[2].Name = "Dirty"
+	m.List[2].ModelDirty()
+	m.ModelDirty()
+
+	data, err = MarshalDiff(m)
+	if err != nil {
+		t.Fail()
+	}
+	println(string(data))
+}
+
+func TestList2Diff(t *testing.T) {
+	m := &List2Model{}
+	m.List = make([]DetailsModel, 4)
+	m.List[0] = DetailsModel{Name: "Elem 0"}
+	m.List[1] = DetailsModel{Name: "Elem 1"}
+	m.List[2] = DetailsModel{Name: "Elem 2"}
+	m.List[3] = DetailsModel{Name: "Elem 3"}
 
 	data, err := MarshalDiff(m)
 	if err != nil {

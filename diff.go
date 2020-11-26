@@ -33,8 +33,8 @@ func MarshalDiff(v interface{}) ([]byte, error) {
 		}
 		opts.isModel = true
 		opts.model = mv
-		opts.modelState = mv.ModelState()
-		println(mv.ModelState())
+		opts.modelState = mv.ModelTestSync(nil, nil)
+		// println(mv.ModelState())
 	}
 
 	e := newEncodeState()
@@ -736,7 +736,9 @@ func (ae arrayEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 			} else if opts.fieldIsSliceOfModelPtrs {
 				eOpts.model = elem.Interface().(ModelIface)
 			} else if opts.fieldIsSliceOfModels {
-				// TODO
+				addr := elem.Addr()
+				eOpts.model = addr.Interface().(ModelIface)
+				// println("SliceOfModels", i, eOpts.model.ModelID())
 			}
 
 			// Determine where the element is located in the previous version
@@ -745,6 +747,7 @@ func (ae arrayEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 			var index = 0
 			if eOpts.model != nil {
 				eOpts.modelState = eOpts.model.ModelTestSync(opts.model, opts.field)
+				// println("    id:", eOpts.model.ModelID())
 				index = eOpts.model.ModelSwapIndex(i)
 				if index > oldIndex && eOpts.modelState != ModelNew {
 					delCount = index - oldIndex
@@ -856,7 +859,18 @@ func (ae arrayEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 			eOpts.modelState = eOpts.model.ModelTestSync(opts.model, opts.field)
 			eOpts.model.ModelSwapIndex(i)
 			ae.elemEnc(e, elem, eOpts)
-			println("Serialized slice element", i, eOpts.modelState)
+			// println("Serialized slice element", i, eOpts.modelState)
+			eOpts.model.ModelSynced()
+		} else if opts.isModel && opts.fieldIsSliceOfModels {
+			var eOpts = opts
+			eOpts.fieldIsSliceOfModelPtrs = false
+			eOpts.isModel = true
+			addr := elem.Addr()
+			eOpts.model = addr.Interface().(ModelIface)
+			eOpts.modelState = eOpts.model.ModelTestSync(opts.model, opts.field)
+			eOpts.model.ModelSwapIndex(i)
+			ae.elemEnc(e, elem, eOpts)
+			// println("Serialized slice element", i, eOpts.modelState)
 			eOpts.model.ModelSynced()
 		} else {
 			ae.elemEnc(e, elem, opts)
