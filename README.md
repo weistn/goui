@@ -6,10 +6,10 @@ and uses Go to implement the application logic.
 
 goui offers multiple mechanisms to communicate between the Go part
 and the browser part of the application.
-It is possible to _call Go functions_ from the browser and to _call Javascript functions_
+It is possible to **call Go functions** from the browser and to **call Javascript functions**
 from Go.
-Furthermore, Go can send _events_ to the browser.
-Finally, goui can _sync a data structure_ with the browser.
+Furthermore, Go can send **events** to the browser.
+Finally, goui can **sync a data structure** with the browser.
 Any changes applied to the Go data structure are automatically synced with the browser,
 where the same data structure is available as a JSON data structure.
 On the browser side, a UI framework such as Vue can be used to render a UI based on this JSON data.
