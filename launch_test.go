@@ -66,7 +66,7 @@ func TestLaunch(t *testing.T) {
 	// Serve content
 	mux.Handle("/", http.FileServer(http.Dir("./test_data")))
 
-	s := NewHTTPServer(mux, remote, m)
+	s := NewHTTPServer("/", mux, remote, m)
 	err := s.Start()
 	if err != nil {
 		t.Fatal(err)

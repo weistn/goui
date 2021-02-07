@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +17,8 @@ import (
 
 // HTTPServer handles HTTP requests for static content
 type HTTPServer struct {
+	initalPath string
+	origin     string
 	token      []byte
 	cookie     string
 	mux        *http.ServeMux
@@ -44,7 +48,10 @@ type callMessage struct {
 // NewHTTPServer creates a new HTTP server.
 // Call Start() to run the server on a system-chosen port via
 // the loopback-device and to launch the UI in the browser.
-func NewHTTPServer(mux *http.ServeMux, remote interface{}, model ModelIface) *HTTPServer {
+// The browser will open the `initialPath`, e.g. "/".
+// The functions of the `remote` interface can be called from JavaScript.
+// The `model` is synced to the browser, i.e. all changes made in GO are synced to the browser.
+func NewHTTPServer(initialPath string, mux *http.ServeMux, remote interface{}, model ModelIface) *HTTPServer {
 	// Create a token that is passed in the URL to the browser
 	token := make([]byte, 32)
 	n, err := rand.Reader.Read(token)
@@ -67,13 +74,16 @@ func NewHTTPServer(mux *http.ServeMux, remote interface{}, model ModelIface) *HT
 		remote:     remote,
 		dispatcher: NewDispatcher(remote),
 		model:      model,
+		initalPath: initialPath,
 	}
 
 	ws := &websocket.Server{
 		Handshake: func(config *websocket.Config, r *http.Request) error { return s.handshake(config, r) },
 		Handler:   func(conn *websocket.Conn) { s.wshandler(conn) },
 	}
+	// WebSocket
 	mux.Handle("/_socket", ws)
+	// JavaScript code for RPC, events, model etc.
 	mux.HandleFunc("/_rpc.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript")
 		w.Write([]byte(GenerateJSCode(s.remote)))
@@ -81,32 +91,57 @@ func NewHTTPServer(mux *http.ServeMux, remote interface{}, model ModelIface) *HT
 	return s
 }
 
-// ServeHTTP handles incoming HTTP requests
+// ServeHTTP handles incoming HTTP requests, checks authentication via the auth cookie
+// and checks for CSRF attacks via Referer and Origin header fields.
 func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	//    println("Request ...", r.URL.String())
+	println("Request ...", r.URL.String(), r.RemoteAddr)
+	// The initial page has not yet been loaded?
 	if s.token != nil {
 		v := r.URL.Query()
 		// The first request must use the secret token and request "/"
 		if r.URL.Path == "/" && v.Get("token") == hex.EncodeToString(s.token) {
-			s.token = nil
+			// s.token = nil
 			http.SetCookie(w, &http.Cookie{Name: "secret", Value: s.cookie})
-			http.Redirect(w, r, "/", http.StatusSeeOther)
+			// http.Redirect(w, r, "/foo", http.StatusSeeOther)
+			// Redirect the browser to the initial page and serve an auth cookie.
+			// On linux, xdg-open unfortunately requests the page itself and follows redirections.
+			// Thus, HTTP redirect will not do as it redirects xdg-open instead of the browser.
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(fmt.Sprintf("<html><head><meta http-equiv=\"refresh\" content=\"0; url=%v%v\"></head><body></body></html>", s.server.URL, s.initalPath)))
+			return
+		} else if r.URL.Path == s.initalPath {
+			// The browser hit the landing page. From now on, do not hand out the cookie any more.
+			s.token = nil
+		} else if r.URL.Path == "/favicon.ico" {
+			// Ok ...
+		} else {
+			// println("Wrong initial request: ", r.URL.String())
+			// This is the wrong request. Must not happen before the initial page has been requested.
+			// Might be an attack. Stop the process.
+			s.close()
 			return
 		}
-		//        println("Wrong initial request: ", r.URL.String())
-		// This is the wrong initial request.
-		// Might be an attack. Stop the process.
-		s.close()
-		return
+	} else {
+		// println("Normal request ...", r.Method)
+		// println(r.RemoteAddr)
+
+		// CSRF prevention. Referer or Origin must be present and correct
+		referer := r.Header.Get("Referer")
+		origin := r.Header.Get("Origin")
+		if origin != s.origin && !strings.HasPrefix(referer, s.origin+"/") {
+			println("Wrong Referer and Origin")
+			w.WriteHeader(http.StatusUnauthorized)
+		}
 	}
 
-	// Access control via cookie
+	// Authentication via cookie
 	c, err := r.Cookie("secret")
 	if c == nil || err != nil || c.Value != s.cookie {
-		//        println("Missing cookie")
+		println("Missing cookie")
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+
 	// Now deliver content as requested
 	s.mux.ServeHTTP(w, r)
 }
@@ -128,6 +163,12 @@ func (s *HTTPServer) handshake(config *websocket.Config, r *http.Request) error 
 		//        println("Illegal websocket connect")
 		return errors.New("Unauthorized")
 	}
+	// CSRF prevention
+	origin := r.Header.Get("Origin")
+	if origin != s.origin {
+		return errors.New("Unauthorized")
+	}
+
 	//    println("Websocket connect ok")
 	return nil
 }
@@ -255,6 +296,8 @@ func (s *HTTPServer) Start() error {
 
 	// Launch the browser
 	u := s.server.URL + "/?token=" + hex.EncodeToString(s.token)
+	s.origin = s.server.URL
+	println("URL", s.server.URL)
 	// cmd := exec.Command("open", u)
 	cmd := LaunchBrowser(u)
 	err := cmd.Start()
