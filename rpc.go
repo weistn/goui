@@ -123,6 +123,10 @@ func GenerateJSCode(obj interface{}) string {
                         }
                     }
                 } else if (msg.f !== undefined) {
+					if (!window[msg.f]) {
+						console.log("Server is calling unknown function", msg.f);
+						return;
+					}
                     window[msg.f].apply(null, msg.a);
                 } else {
                     var p = pending[msg.id];
