@@ -62,7 +62,7 @@ func TestLaunch(t *testing.T) {
 	m.List[1] = &DetailsModel{Name: "Elem 2"}
 	remote := &MyRemote{model: m}
 
-	s := NewWebUI("/", remote, m)
+	s := NewWindow("/", remote, m)
 	s.Handle("/", http.FileServer(http.Dir("./test_data")))
 	err := s.Start()
 	if err != nil {

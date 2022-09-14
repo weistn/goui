@@ -95,12 +95,7 @@ var errorInterface = reflect.TypeOf((*error)(nil)).Elem()
 
 // Dispatch decodes the JSON msg and invokes a function on the object.
 // It returns a JSON encoded return message.
-func (d *Dispatcher) Dispatch(msg []byte) ([]byte, error) {
-	var inv invocation
-	err := json.Unmarshal([]byte(msg), &inv)
-	if err != nil {
-		return nil, err
-	}
+func (d *Dispatcher) Dispatch(inv *invocation) ([]byte, error) {
 	println("Invoke", inv.Name)
 
 	f, ok := d.funcs[inv.Name]
@@ -173,14 +168,14 @@ func (d *Dispatcher) Dispatch(msg []byte) ([]byte, error) {
 			vals[i] = reflect.ValueOf(v)
 		case reflect.Map, reflect.Struct, reflect.Slice, reflect.Array:
 			v := reflect.New(t)
-			err = json.Unmarshal(inv.Message[i-1], v.Interface())
+			err := json.Unmarshal(inv.Message[i-1], v.Interface())
 			if err != nil {
 				return nil, err
 			}
 			vals[i] = v.Elem()
 		case reflect.Ptr:
 			v := reflect.New(t.Elem())
-			err = json.Unmarshal(inv.Message[i-1], v.Interface())
+			err := json.Unmarshal(inv.Message[i-1], v.Interface())
 			if err != nil {
 				return nil, err
 			}

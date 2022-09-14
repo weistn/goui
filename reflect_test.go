@@ -2,6 +2,7 @@ package goui
 
 import (
     "testing"
+	"encoding/json"
 )
 
 type point struct {
@@ -20,13 +21,22 @@ func TestReflect(t *testing.T) {
     j := `
         {"n": "Foo2", "v": [42, "huhu", {"x": 12, "y": 24}, {"hudel": 13, "dudel": 16}, {"x": 123, "y": 456}, [4,5,6], [10,11,12]]}
     `
-    _, err := disp.Dispatch([]byte(j))
+    var inv invocation
+    err := json.Unmarshal([]byte(j), &inv)
+    if err != nil {
+        t.Fatal(err)
+    }
+    _, err = disp.Dispatch(&inv)
     if err != nil {
         t.Fatal(err)
     }
 
     j = `{"n": "Foo1", "v": []}`
-    _, err = disp.Dispatch([]byte(j))
+    err = json.Unmarshal([]byte(j), &inv)
+    if err != nil {
+        t.Fatal(err)
+    }
+    _, err = disp.Dispatch(&inv)
     if err != nil {
         t.Fatal(err)
     }
