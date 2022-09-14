@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -55,6 +56,9 @@ type callMessage struct {
 // The functions of the `remote` interface can be called from JavaScript.
 // The `model` is synced to the browser, i.e. all changes made in GO are synced to the browser.
 func NewWindow(initialPath string, remote interface{}, model ModelIface) *Window {
+	// Make sure the server emits the right Content-Type header
+	mime.AddExtensionType(".css", "text/css")
+
 	// Create a token that is passed in the URL to the browser
 	token := make([]byte, 32)
 	n, err := rand.Reader.Read(token)
