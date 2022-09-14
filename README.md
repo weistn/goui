@@ -17,7 +17,7 @@ Any changes applied to the Go data structure are automatically synced with the b
 where the same data is available as JSON.
 On the browser side, a UI framework such as Vue can be used to render a UI based on this JSON data.
 
-## Technical Details
+## Technical Details and Security
 
 The Go part of the application communicates with the browser via a web socket on the loopback device.
 The initial URL contains a random token.

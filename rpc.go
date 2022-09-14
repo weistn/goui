@@ -1,12 +1,16 @@
 package goui
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
+	"text/template"
+
+	_ "embed"
 )
 
 // invocation is the message sent from client to server to invoke a function
@@ -33,11 +37,12 @@ type Dispatcher struct {
 	obj   interface{}
 }
 
+//go:embed js/rpc.js
+var rpcjs string
+
 // GenerateJSCode creates a client-side javascript proxy for the object.
 func GenerateJSCode(obj interface{}) string {
-	var lines []string
-	lines = append(lines, "window.go = (function() {")
-	lines = append(lines, "var go = {")
+	// Generate JS stubs for all exported Go functions
 	var apis []string
 	t := reflect.TypeOf(obj)
 	for i := 0; i < t.NumMethod(); i++ {
@@ -60,201 +65,14 @@ func GenerateJSCode(obj interface{}) string {
 		api += "})}\n"
 		apis = append(apis, api)
 	}
-	apis = append(apis, `
-		data: null,
-        addEventListener : function(name, cb) {
-            if (!listeners[name]) {
-                listeners[name] = [ ];
-            }
-            listeners[name].push(cb);
-        },
-        removeEventListener : function(name, cb) {
-            var arr = listeners[name];
-            if (!arr) {
-                return;
-            }
-            for (var i = 0; i < arr.length; i++) {
-                if (arr[i] == cb) {
-                    arr.splice(i, 1);
-                    return;
-                }
-            }
-        },
-        connect: async function() {
-            if (initPromise) {
-                return initPromise;
-            }
-            initPromise = new Promise((ff, rej) => {
-                initFf = ff;
-                initRej = rej;
-            });
-            connection = new WebSocket('ws://' + window.location.host + "/_socket");
-            connection.onopen = function () {
-                console.log('Welcome');
-            };
-    
-            // Log errors
-            connection.onerror = function (error) {
-				console.log('WebSocket Error ' + error);
-				if (initRej) {
-					initRej();
-				}
-				document.body.innerHTML = "Application terminated<br>Close browser tab."
-            };
-    
-            // Log messages from the server
-            connection.onmessage = function (e) {
-                console.log('Server: ' + e.data);
-				var msg = JSON.parse(e.data);
-				if (msg.m !== undefined) {
-					applyDiff(window.go, "data", undefined, false, msg.m)
-					if (!gotModel) {
-						// We are ready, once the initial model has been retrieved.
-						gotModel = true
-						initFf();
-						initFf = null
-						initRej = null
-					}
-				} else if (msg.n !== undefined) {
-                    var arr = listeners[msg.n]
-                    if (arr) {
-                        for (var i = 0; i < arr.length; i++) {
-                            arr[i](msg.ev);
-                        }
-                    }
-                } else if (msg.f !== undefined) {
-					if (!window[msg.f]) {
-						console.log("Server is calling unknown function", msg.f);
-						return;
-					}
-                    window[msg.f].apply(null, msg.a);
-                } else {
-                    var p = pending[msg.id];
-                    if (!p) {
-                        console.log("Unexpected answer");
-                    }
-                    delete pending[msg.id];
-                    if (msg.e !== undefined) {
-                        p.rej(msg.e);
-                    } else if (msg.a !== undefined) {
-                        p.ff(msg.a);
-                    } else {
-                        p.ff(msg.v);
-                    }
-                }
-            };
-            return initPromise;
-        }
-    `)
-	lines = append(lines, strings.Join(apis, ",\n"))
-	lines = append(lines, "};")
-	lines = append(lines, `
-        var initPromise = null;
-        var initFf = null;
-        var initRej = null;
-        var pending = { };
-        var counter = 0;
-        var listeners = { };
-        var connection = null;
-		var gotModel = false;
+	var api = strings.Join(apis, ",")
 
-        function send(msg, ff, rej) {
-            counter++;
-            msg.id = counter;
-            pending[counter] = {ff: ff, rej: rej};
-            connection.send(JSON.stringify(msg));
-        }
-	`)
-	lines = append(lines, `
-		function applyDiff(parent, prop, index, ins, diff) {
-			var value
-			if (diff === null) {
-				value = null
-			} else if (typeof(diff) === "object") {
-				if (diff._a !== undefined) {
-					// Modify an array
-					var arr = parent[prop]
-					var cloned = null
-					// Chop the array when necessary
-					if (arr.length != diff._l) {
-						arr.splice(diff._l, arr.length - diff._l)
-					}
-					var pos = arr.length
-					var insertCount = 0
-					for (let i = diff._a.length - 1; i >= 0; i--) {
-						var e = diff._a[i]
-						if (typeof(e) === "number") {
-							pos -= e
-						} else if (e._d !== undefined) {
-							if (cloned === null) {
-								cloned = [...arr]
-							}
-							pos -= e._d
-							arr.splice(pos, e._d)
-						} else if (e._i !== undefined) {
-							insertCount = e._i
-						} else if (e._c !== undefined) {
-							if (cloned === null) {
-								cloned = [...arr]
-							}
-							arr.splice(pos, 0, ...(clone.slice(e._c, e._c + e._l)))
-						} else if (e._t !== undefined) {
-							if (cloned === null) {
-								cloned = [...arr]
-							}
-							arr.splice(pos, 0, ...(clone.slice(e._c, e._c + e._l)))
-							applyDiff(arr, undefined, pos, false, e._v)
-						} else {
-							if (insertCount > 0) {
-								applyDiff(arr, undefined, pos, true, e)
-								insertCount--
-							} else {
-								pos--
-								applyDiff(arr, undefined, pos, false, e)
-							}
-						}
-					}
-					return
-				} else if (diff._id !== undefined) {
-					// The value is an object literal
-					value = diff
-				} else {
-					// Modify an object
-					for (let key of Object.keys(diff)) {
-						if (index === undefined) {
-							applyDiff(parent[prop], key, undefined, false, diff[key])
-						} else {
-							applyDiff(parent[index], key, undefined, false, diff[key])
-						}
-					}
-					return
-				}
-			} else if (Array.isArray(diff)) {
-				// The value is an array literal
-				value = diff
-			} else {
-				// The value is a primitive literal
-				value = diff
-			}
-		
-			// Set the property or list element
-			if (index === undefined) {
-				// Set property
-				parent[prop] = diff
-			} else {
-				// Insert or replace an array element.
-				// Use splice here to ensure vue.js compatibility
-				if (ins) {
-					parent.splice(index, 0, diff)
-				} else {
-					parent.splice(index, 1, diff)
-				}
-			}
-		}
-	`)
-	lines = append(lines, "return go; })();")
-
-	return strings.Join(lines, "\n")
+	tmpl := template.Must(template.New("_rpc.js").Parse(rpcjs))
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, api); err != nil {
+		panic(err)
+	}
+	return buf.String()
 }
 
 // NewDispatcher creates a new dispatcher for the object
@@ -283,15 +101,16 @@ func (d *Dispatcher) Dispatch(msg []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	println("Invoke", inv.Name)
 
 	f, ok := d.funcs[inv.Name]
 	if !ok {
-		return nil, errors.New("Unknown method")
+		return nil, errors.New("unknown method")
 	}
 	vals := make([]reflect.Value, f.Type.NumIn())
 	vals[0] = reflect.ValueOf(d.obj)
 	if f.Type.NumIn() != len(inv.Message)+1 {
-		return nil, errors.New("Wrong parameter count")
+		return nil, errors.New("wrong parameter count")
 	}
 	for i := 1; i < f.Type.NumIn(); i++ {
 		t := f.Type.In(i)
@@ -367,7 +186,7 @@ func (d *Dispatcher) Dispatch(msg []byte) ([]byte, error) {
 			}
 			vals[i] = v
 		default:
-			return nil, errors.New("Type not supported")
+			return nil, errors.New("type not supported")
 		}
 	}
 	rets := f.Func.Call(vals)

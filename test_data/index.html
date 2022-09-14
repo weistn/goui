@@ -1,3 +1,5 @@
+<!-- This file is used by TestLaunch in launch_test.go -->
+
 <html>
     <head>
         <script src="/_rpc.js"></script>
@@ -14,23 +16,32 @@
             </ul>
         </div>
         <script>
+
 // Top-Level function that can be called by the server.
 // Make sure that these are visible before connecting to the server
 function sayHello(name) {
     console.log("Hello", name);
 }
 
-// Call when DOM has loaded, connect with the server and enabe the UI
+// Call when DOM has loaded (see body tag) to connect with the server and enabe the UI
 async function init() {
-    // Install event listeners before connecting to the server.
+    // For demonstration purposes: Install event listeners before connecting to the server.
+    // The function is called when the server sends a greet comment.
     go.addEventListener("greet", (txt) => {console.log("Greet", txt)})
+
     // Connect to the server
     await go.connect()
     console.log(go.data)
+
     // Wire the UI now, because calls to the server are now possible.
     document.getElementById("button").addEventListener("click", async function() {
+        // For demonstration purposes: When the button is clicked, invoke some functions on the server side.
         console.log("Clicked")
+
+        // Should return undefined as result
         try {
+            // Invocation of a server function returns a promise.
+            // Therefore use await to check on the result.
             var result = await go.Foo()
             console.log("Ok", result)
         } catch(e) {
@@ -44,6 +55,7 @@ async function init() {
             console.log("Failure", e)
         }
 
+        // Should fail, because FooErr will return a non-nil error
         try {
             var result = await go.FooErr(-3)
             console.log("Ok", result)
@@ -51,6 +63,7 @@ async function init() {
             console.log("Failure", e)
         }
 
+        // Should return [4, 6] as result
         try {
             var result = await go.FooArr(2, 3)
             console.log("Ok", result)
@@ -58,6 +71,7 @@ async function init() {
             console.log("Failure", e)
         }
 
+        // Should fail, because FooArrErr will return a non-nil error
         try {
             var result = await go.FooArrErr(-2, 3)
             console.log("Ok", result)
@@ -65,14 +79,18 @@ async function init() {
             console.log("Failure", e)
         }
 
+        // Should return ["Joe Dana ", 81]
         try {
             var result = await go.Names({"Joe": 42, "Dana": 39})
             console.log("Ok", result)
         } catch(e) {
             console.log("Failure", e)
         }
-    })
+    });
+
     document.getElementById("button2").addEventListener("click", async function() {
+        // This server invocation will cause the server to update the synced model.
+        // Consequently, go.data will be modified and the VUE will update the UI accordingly.
         try {
             var result = await go.DoMe()
             console.log("Ok", result)
@@ -81,13 +99,16 @@ async function init() {
         }
     })
 
-    // Initialize Vue
+    // In this example we use Vue for data binding.
+    // goui will initially populate go.data with the synced data model.
+    // Initialize Vue.
     app = Vue.createApp({
         data() {
             return go.data
         }
     })
     vm = app.mount("#app")
+    // Little hack so that goui works on the data model created by Vue.
     go.data = vm.$data
 }
 

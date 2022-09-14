@@ -62,11 +62,8 @@ func TestLaunch(t *testing.T) {
 	m.List[1] = &DetailsModel{Name: "Elem 2"}
 	remote := &MyRemote{model: m}
 
-	mux := http.NewServeMux()
-	// Serve content
-	mux.Handle("/", http.FileServer(http.Dir("./test_data")))
-
-	s := NewHTTPServer("/", mux, remote, m)
+	s := NewWebUI("/", remote, m)
+	s.Handle("/", http.FileServer(http.Dir("./test_data")))
 	err := s.Start()
 	if err != nil {
 		t.Fatal(err)

@@ -56,7 +56,7 @@ type Model struct {
 var idCounter int
 
 // ModelDirty marks the object as requiring synchronization.
-// The parent Models are marked with ModelChildDirty.
+// The parent Models are automatically marked with ModelChildDirty.
 func (m *Model) ModelDirty() {
 	if m.state == ModelSynced {
 		m.state = ModelDirty

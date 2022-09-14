@@ -15,12 +15,14 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-// HTTPServer handles HTTP requests for static content
-type HTTPServer struct {
+// WebUI handles HTTP requests for static content
+type WebUI struct {
 	initalPath string
 	origin     string
 	token      []byte
 	cookie     string
+	// Incoming http requests are first checked for cookies etc. and
+	// then forwarded to this mux.
 	mux        *http.ServeMux
 	server     *httptest.Server
 	end        chan bool
@@ -45,13 +47,13 @@ type callMessage struct {
 	Name      string        `json:"f"`
 }
 
-// NewHTTPServer creates a new HTTP server.
+// NewWebUI creates a new HTTP server.
 // Call Start() to run the server on a system-chosen port via
 // the loopback-device and to launch the UI in the browser.
 // The browser will open the `initialPath`, e.g. "/".
 // The functions of the `remote` interface can be called from JavaScript.
 // The `model` is synced to the browser, i.e. all changes made in GO are synced to the browser.
-func NewHTTPServer(initialPath string, mux *http.ServeMux, remote interface{}, model ModelIface) *HTTPServer {
+func NewWebUI(initialPath string, remote interface{}, model ModelIface) *WebUI {
 	// Create a token that is passed in the URL to the browser
 	token := make([]byte, 32)
 	n, err := rand.Reader.Read(token)
@@ -65,8 +67,8 @@ func NewHTTPServer(initialPath string, mux *http.ServeMux, remote interface{}, m
 		panic("No randomness here")
 	}
 
-	s := &HTTPServer{
-		mux:        mux,
+	s := &WebUI{
+		mux:        http.NewServeMux(),
 		cookie:     hex.EncodeToString(cookie),
 		token:      token,
 		end:        make(chan bool),
@@ -82,9 +84,9 @@ func NewHTTPServer(initialPath string, mux *http.ServeMux, remote interface{}, m
 		Handler:   func(conn *websocket.Conn) { s.wshandler(conn) },
 	}
 	// WebSocket
-	mux.Handle("/_socket", ws)
+	s.mux.Handle("/_socket", ws)
 	// JavaScript code for RPC, events, model etc.
-	mux.HandleFunc("/_rpc.js", func(w http.ResponseWriter, r *http.Request) {
+	s.mux.HandleFunc("/_rpc.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript")
 		w.Write([]byte(GenerateJSCode(s.remote)))
 	})
@@ -93,7 +95,8 @@ func NewHTTPServer(initialPath string, mux *http.ServeMux, remote interface{}, m
 
 // ServeHTTP handles incoming HTTP requests, checks authentication via the auth cookie
 // and checks for CSRF attacks via Referer and Origin header fields.
-func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// Do not call this function from the application code.
+func (s *WebUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	println("Request ...", r.URL.String(), r.RemoteAddr)
 	// The initial page has not yet been loaded?
 	if s.token != nil {
@@ -146,21 +149,43 @@ func (s *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
-func (s *HTTPServer) close() {
+func (s *WebUI) close() {
 	s.server.CloseClientConnections()
 	s.end <- true
 	s.server.Close()
 }
 
+func (s *WebUI) websocketConnected(conn *websocket.Conn) {
+	s.conn = conn
+	// if s.waitingForStart {
+	s.connected <- true
+	// }
+}
+
+func (s *WebUI) websocketDisconnected() {
+	s.conn = nil
+
+	go func() {
+		select {
+		case <-s.connected:
+			// Ok, do nothing
+			return
+		case <-time.After(10 * time.Second):
+			println("UI Timeout. No new websocket connection")
+			s.close()
+		}
+	}()
+}
+
 // Accept incoming websockets and allow for RPC
-func (s *HTTPServer) handshake(config *websocket.Config, r *http.Request) error {
+func (s *WebUI) handshake(config *websocket.Config, r *http.Request) error {
 	if s.conn != nil {
-		//        println("Double websocket connection")
+		println("Double websocket connection")
 		return errors.New("Unauthorized")
 	}
 	c, err := r.Cookie("secret")
 	if c == nil || err != nil || c.Value != s.cookie {
-		//        println("Illegal websocket connect")
+		println("Illegal websocket connect")
 		return errors.New("Unauthorized")
 	}
 	// CSRF prevention
@@ -169,21 +194,22 @@ func (s *HTTPServer) handshake(config *websocket.Config, r *http.Request) error 
 		return errors.New("Unauthorized")
 	}
 
-	//    println("Websocket connect ok")
+	println("Websocket connect ok")
 	return nil
 }
 
-func (s *HTTPServer) wshandler(conn *websocket.Conn) {
-	s.conn = conn
+func (s *WebUI) wshandler(conn *websocket.Conn) {
+	s.websocketConnected(conn)
 	//    println("Websocket connected")
-	s.connected <- true
 	s.SyncModel()
 	for {
 		var msg string
 		err := websocket.Message.Receive(conn, &msg)
 		if err != nil {
-			//            println("Websocket failed")
-			s.close()
+			println("Websocket failed while reading", err)
+			println(fmt.Sprintf("ERR %v %v\n", err.Error(), err))
+			s.websocketDisconnected()
+			// s.close()
 			return
 		}
 		println("Got data:", msg)
@@ -200,19 +226,20 @@ func (s *HTTPServer) wshandler(conn *websocket.Conn) {
 		}
 		s.lock.Unlock()
 		if err != nil {
-			//            println("Websocket failed")
-			s.close()
+			println("Websocket failed while sending", err)
+			s.websocketDisconnected()
+			// s.close()
 			return
 		}
 	}
 }
 
 // SendEvent sends an event to the browser
-func (s *HTTPServer) SendEvent(name string, event interface{}) error {
+func (s *WebUI) SendEvent(name string, event interface{}) error {
 	s.lock.Lock()
 	if s.conn == nil {
 		s.lock.Unlock()
-		return errors.New("Not connected")
+		return errors.New("not connected")
 	}
 	e := &eventMessage{
 		Event: event,
@@ -235,7 +262,7 @@ func (s *HTTPServer) SendEvent(name string, event interface{}) error {
 
 // SyncModel synchronizes the client-side model with all changes
 // applied to the server-side model.
-func (s *HTTPServer) SyncModel() error {
+func (s *WebUI) SyncModel() error {
 	s.lock.Lock()
 	if s.model == nil || s.model.ModelState() == ModelSynced {
 		s.lock.Unlock()
@@ -243,7 +270,7 @@ func (s *HTTPServer) SyncModel() error {
 	}
 	if s.conn == nil {
 		s.lock.Unlock()
-		return errors.New("Not connected")
+		return errors.New("not connected")
 	}
 	data, err := MarshalDiff(s.model)
 	if err != nil {
@@ -261,12 +288,12 @@ func (s *HTTPServer) SyncModel() error {
 
 // SendCall invokes a function in the browser.
 // SendCall is async, i.e. it does not wait for the browser to complete the function call
-// and the result is not transmitted back to the server
-func (s *HTTPServer) SendCall(fname string, args ...interface{}) error {
+// and the result is not transmitted back to the server.
+func (s *WebUI) SendCall(fname string, args ...interface{}) error {
 	s.lock.Lock()
 	if s.conn == nil {
 		s.lock.Unlock()
-		return errors.New("Not connected")
+		return errors.New("not connected")
 	}
 	c := &callMessage{
 		Arguments: args,
@@ -288,9 +315,13 @@ func (s *HTTPServer) SendCall(fname string, args ...interface{}) error {
 	return nil
 }
 
+func (s *WebUI) Handle(pattern string, handler http.Handler) {
+	s.mux.Handle(pattern, handler)
+}
+
 // Start starts the web server and returns after the UI has
 // either been opened or if the UI could not be started.
-func (s *HTTPServer) Start() error {
+func (s *WebUI) Start() error {
 	// Start accepting incoming HTTP requests
 	s.server = httptest.NewServer(s)
 
@@ -328,7 +359,7 @@ func (s *HTTPServer) Start() error {
 }
 
 // Wait blocks until the user closed the browser window.
-func (s *HTTPServer) Wait() {
+func (s *WebUI) Wait() {
 	// Wait for the end
 	<-s.end
 }
