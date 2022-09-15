@@ -282,7 +282,7 @@ func (s *Window) SendEvent(name string, event interface{}) error {
 // applied to the server-side model.
 func (s *Window) SyncModel() error {
 	s.lock.Lock()
-	if s.model == nil || s.model.ModelState() == ModelSynced {
+	if s.model != nil && s.model.ModelState() == ModelSynced {
 		s.lock.Unlock()
 		return nil
 	}
@@ -304,10 +304,10 @@ func (s *Window) SyncModel() error {
 	return nil
 }
 
-// SendCall invokes a function in the browser.
-// SendCall is async, i.e. it does not wait for the browser to complete the function call
+// Call invokes a function in the browser.
+// Call is async, i.e. it does not wait for the browser to complete the function call
 // and the result is not transmitted back to the server.
-func (s *Window) SendCall(fname string, args ...interface{}) error {
+func (s *Window) Call(fname string, args ...interface{}) error {
 	s.lock.Lock()
 	if s.conn == nil {
 		s.lock.Unlock()

@@ -1,0 +1,23 @@
+<html>
+    <head>
+        <script src="/_rpc.js"></script>
+    </head>
+    <body onload="init()">
+        <h1 id="greet"></h1>
+        <script>
+
+// init is called when DOM has loaded (see body tag) to connect with the Go process.
+async function init() {
+    console.log("Init")
+    await go.connect();
+
+    console.log("Initialized");
+
+    // Invoke the WindowAPI.Hello function on the go process and display the return value.
+    greet = await go.Hello("Hello Go process");
+    document.getElementById("greet").innerText = greet;
+}
+
+        </script>
+    </body>
+</html>

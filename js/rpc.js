@@ -194,7 +194,7 @@ window.go = (function() {
             connection = new WebSocket('ws://' + window.location.host + "/_socket");
 
             connection.onopen = function () {
-                console.log('Welcome');
+                console.log('WebSocket open');
                 reconnectCount = 0;
                 // Send queued data
                 while (queue && queue.length > 0) {

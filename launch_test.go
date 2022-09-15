@@ -71,7 +71,7 @@ func TestLaunch(t *testing.T) {
 	if err := s.SendEvent("greet", "Guten Tag"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SendCall("sayHello", "Joe Doe"); err != nil {
+	if err := s.Call("sayHello", "Joe Doe"); err != nil {
 		t.Fatal(err)
 	}
 	s.Wait()
