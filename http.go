@@ -32,6 +32,7 @@ type Window struct {
 	remote     interface{}
 	dispatcher *Dispatcher
 	model      ModelIface
+	modelState ModelState
 	lock       sync.Mutex
 	conn       *websocket.Conn
 }
@@ -282,7 +283,7 @@ func (s *Window) SendEvent(name string, event interface{}) error {
 // applied to the server-side model.
 func (s *Window) SyncModel() error {
 	s.lock.Lock()
-	if s.model != nil && s.model.ModelState() == ModelSynced {
+	if (s.model == nil || s.model.ModelState() == ModelSynced) && s.modelState == ModelSynced {
 		s.lock.Unlock()
 		return nil
 	}
@@ -301,6 +302,7 @@ func (s *Window) SyncModel() error {
 		s.close()
 		return err
 	}
+	s.modelState = ModelSynced
 	return nil
 }
 
